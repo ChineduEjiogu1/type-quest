@@ -1,11 +1,17 @@
 :root {
-  --bg: #323437;
-  --main: #e2b714;
-  --sub: #646669;
-  --text: #d1d0c5;
-  --error: #ca4754;
-  --success: #4ade80;
-  --panel: #2c2e31;
+  /* base theme: white / blue / light-gray */
+  --bg: #eef2f7;          /* light-gray canvas */
+  --panel: #ffffff;       /* white surfaces (header, cards) */
+  --main: #2563eb;        /* blue accent (timer, caret, title, wpm) */
+  --main-soft: #dbeafe;   /* pale blue tint (hover) */
+  --text: #1e293b;        /* dark slate — body text */
+  --sub: #9aa3b2;         /* muted gray — labels + UNtyped/pending chars */
+
+  /* functional feedback colors — loud on purpose */
+  --correct: #16a34a;     /* green — right keystrokes */
+  --error: #dc2626;       /* red — wrong keystrokes */
+  --warning: #ea580c;     /* amber-red — time running out */
+
   --font: "Courier New", Courier, monospace;
 }
 
@@ -41,16 +47,14 @@ body {
   text-transform: lowercase;
 }
 
+/* blue is reserved for neutral accents — never for right/wrong feedback */
 .app-title span,
-.timer-display,
-.summary-title,
-.stats-row .highlight {
+.timer-display {
   color: var(--main);
 }
 
 .subtitle,
 .console-label,
-.stats-row,
 .summary-metric-label {
   color: var(--sub);
 }
@@ -67,17 +71,23 @@ body {
   color: var(--sub);
   font: inherit;
   cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease;
 }
 
 .btn-action:hover {
   color: var(--main);
-  background: var(--panel);
+  background: var(--main-soft);
 }
 
 .timer-display {
   margin-bottom: 2rem;
   font-size: 1.35rem;
   font-weight: 700;
+}
+
+/* add the "warning" class to the timer in JSX when time is low (see note) */
+.timer-display.warning {
+  color: var(--warning);
 }
 
 .console-box {
@@ -98,6 +108,10 @@ body {
   line-height: 1.1;
 }
 
+.target-word {
+  color: var(--text);
+}
+
 .input-row {
   min-height: 4rem;
   display: flex;
@@ -107,24 +121,29 @@ body {
   gap: 0.1rem;
 }
 
+.word-box {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.1rem;
+}
+
+/* ===== the core feedback: gray pending, green correct, red wrong ===== */
 .char-token {
-  color: var(--sub);
+  color: var(--sub);           /* not yet reached */
   padding: 0 0.04em;
+  font-family: var(--font);
+  transition: color 0.1s ease;
 }
 
 .char-token.correct {
-  color: var(--success);
+  color: var(--correct);       /* GREEN */
 }
 
-.char-token.error,
-.stats-row .alert,
-.summary-metric-value.error {
-  color: var(--error);
-}
-
-.char-token.error {
-  text-decoration: underline;
-  text-decoration-thickness: 0.12em;
+.char-token.incorrect {
+  color: var(--error);         /* RED */
+  background-color: rgba(220, 38, 38, 0.1);
+  text-decoration: underline wavy var(--error);
   text-underline-offset: 0.18em;
 }
 
@@ -133,7 +152,7 @@ body {
   height: clamp(2rem, 6vw, 3.4rem);
   margin-left: 0.1rem;
   border-radius: 999px;
-  background: var(--main);
+  background: var(--main);     /* blue — marks where you are */
   animation: blink 1s infinite;
 }
 
@@ -145,18 +164,73 @@ body {
   margin-top: 2rem;
 }
 
+/* live counters mirror the same green/red language */
+.stats-row,
+.summary-metric-label {
+  color: var(--sub);
+}
+
+.stats-row .highlight,
+.summary-metric-value.success {
+  color: var(--correct);       /* GREEN — correct count */
+}
+
+.stats-row .alert,
+.summary-metric-value.error {
+  color: var(--error);         /* RED — error count */
+}
+
 .summary-title {
   font-size: 2rem;
   text-transform: lowercase;
+  color: var(--main);
 }
 
 .summary-metric-value {
   font-size: 3.5rem;
   font-weight: 700;
+  color: var(--text);
 }
 
-.summary-metric-value.success {
-  color: var(--success);
+.summary-metric-value.accent {
+  color: var(--main);          /* blue — wpm, accuracy (neutral measures) */
+}
+
+.summary-metric-value.reward {
+  color: var(--main);
+  text-shadow: 0 0 8px rgba(37, 99, 235, 0.18);
+}
+
+.summary-grid.sub-metrics {
+  margin-top: 0;
+  gap: 2.5rem;
+  opacity: 0.7;
+}
+
+/* persistent RPG header — a white card on the gray canvas */
+.profile-header {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 2rem;
+  background-color: var(--panel);
+  padding: 0.75rem 2rem;
+  border-radius: 8px;
+  margin-bottom: 2rem;
+  font-family: var(--font);
+  font-size: 0.9rem;
+  color: var(--sub);
+  border: 1px solid rgba(37, 99, 235, 0.12);
+  box-shadow: 0 1px 3px rgba(30, 41, 59, 0.06);
+}
+
+.profile-badge span {
+  color: var(--main);
+  font-weight: bold;
+}
+
+.profile-stat strong {
+  color: var(--text);
 }
 
 .fade-in {
@@ -169,14 +243,14 @@ body {
 }
 
 @keyframes fade {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
 
-  to {
-    opacity: 1;
-    transform: translateY(0);
+@media (prefers-reduced-motion: reduce) {
+  .blinking-caret,
+  .fade-in {
+    animation: none;
   }
 }
 

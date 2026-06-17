@@ -10,6 +10,7 @@
  * second, INNER switch over the kind of key that was pressed.
  */
 import type { AppState, AppAction } from "./types";
+import { finalizeProfile } from "./progression";
 
 export function appReducer(state: AppState, action: AppAction): AppState {
   switch (action.type) {
@@ -57,7 +58,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
               ...state.phase,
               metrics: {
                 ...metrics,
-                startTime: metrics.startTime ?? now, // ← the only new line
+                startTime: metrics.startTime ?? now, // Set the clock base if it is the first stroke
                 typed: metrics.typed + key,
                 correctChars: isCorrect
                   ? metrics.correctChars + 1
@@ -91,15 +92,26 @@ export function appReducer(state: AppState, action: AppAction): AppState {
 
           const nextWordIndex = metrics.wordIndex + 1;
 
-          // Was that the final word? If so, the run is over → GAME_OVER.
+          // =======================================================
+          // TRANSITION 2: Word Stream Exhaustion -> GAME_OVER
+          // =======================================================
           if (nextWordIndex >= wordStream.length) {
+            // 1. Capture the final metrics pool at text completion
+            const finalMetrics = {
+              ...metrics,
+              wordIndex: nextWordIndex,
+              typed: "", // Clear buffer for clean ending presentation layout
+            };
+
+            // 2. Return atomic state containing the structural high-score calculations
             return {
               ...state,
               phase: {
                 status: "GAME_OVER",
                 wordStream,
-                metrics, // snapshot the final stats as-is
+                metrics: finalMetrics,
               },
+              profile: finalizeProfile(state.profile, finalMetrics),
             };
           }
 
@@ -124,48 +136,65 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     }
 
     // ── TICK ─────────────────────────────────────────────────────────────
-    // Fired on a timer (several times a second) to drive the countdown.
+    // System clock pulse: counts down remaining game loop duration.
+    // =======================================================
+    // TRANSITION 1: System Countdown Timeout -> GAME_OVER
+    // =======================================================
+    // ── TICK ─────────────────────────────────────────────────────────────
+    // System clock pulse: derives remaining time from true wall-clock elapsed time.
     case "TICK": {
-      // Only count down during an active, already-started game.
       if (state.phase.status !== "PLAYING") return state;
-      const { metrics, wordStream } = state.phase;
-      if (metrics.startTime === null) return state; // clock hasn't started yet
 
-      // Measure elapsed time from the wall clock rather than by counting ticks.
-      // This is immune to interval jitter, dropped ticks, and the throttling
-      // browsers apply to background tabs.
+      const { metrics, wordStream } = state.phase;
+
+      // Idle State Guard: If the user hasn't typed their first stroke yet,
+      // the countdown loop remains completely frozen at maximum duration.
+      if (metrics.startTime === null) return state;
+
+      // True Wall-Clock Derivation: Protects against setInterval drift and background tab throttling
       const elapsedSeconds = Math.floor(
         (action.payload.now - metrics.startTime) / 1000,
       );
-      // Derive what's left from the FROZEN total, so the value can never
-      // accumulate drift no matter how irregularly TICK fires.
-      const newTimeRemaining = metrics.duration - elapsedSeconds;
+      const newTimeRemaining = Math.max(0, metrics.duration - elapsedSeconds);
 
-      // Time's up → end the run. A reducer can't dispatch actions, so TICK
-      // performs the GAME_OVER transition itself the moment the clock expires.
+      // =======================================================
+      // TRANSITION 1: System Countdown Timeout -> GAME_OVER
+      // =======================================================
       if (newTimeRemaining <= 0) {
+        // 1. Build the exact final snapshot of game metrics (Clamping live time to 0)
+        const finalMetrics = {
+          ...metrics,
+          timeRemaining: 0,
+        };
+
+        // 2. Transition atomic state with an updated profile field override
         return {
           ...state,
           phase: {
             status: "GAME_OVER",
             wordStream,
-            metrics: { ...metrics, timeRemaining: 0 }, // clamp the display to 0
+            metrics: finalMetrics,
           },
+          // The finalizeProfile call overrides the old profile stored in state.profile single-shot
+          profile: finalizeProfile(state.profile, finalMetrics),
         };
       }
 
-      // Still running — just refresh the displayed time.
+      // Regular countdown update: Push the freshly derived wall-clock time into state
       return {
         ...state,
         phase: {
           ...state.phase,
-          metrics: { ...metrics, timeRemaining: newTimeRemaining },
+          metrics: {
+            ...metrics,
+            timeRemaining: newTimeRemaining,
+          },
         },
       };
     }
 
-    // Any action we don't explicitly handle (e.g. END_GAME for now) leaves
-    // state untouched, which is the safe default for a reducer.
+    // Any action we don't explicitly handle leaves state untouched,
+    // which is the safe default for a deterministic reducer.
     default:
       return state;
   }

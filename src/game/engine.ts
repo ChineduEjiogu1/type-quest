@@ -6,16 +6,29 @@
  * them trivial to unit-test in isolation.
  */
 import type { AppState } from "./types";
+import { loadProfile } from "../hooks/usePersistentProgress"; // Fixed: Pulling our actual storage reader function from sibling file
 
 /**
  * The starting state for `useReducer(appReducer, createInitialState())`:
  * a fresh INITIAL phase plus a default profile. These are the defaults — when
  * there's saved progress, the persistence layer hydrates over the top of them.
  */
-export const createInitialState = (): AppState => ({
-  phase: { status: "INITIAL" },
-  profile: { level: 1, xp: 0, bestWpm: 0 },
-});
+export function createInitialState(): AppState {
+  // 1. Attempt to load a saved profile securely from browser disk space
+  const savedProfile = loadProfile();
+
+  return {
+    // 2. If a saved profile exists, use it! Otherwise, fall back to default Level 1 stats
+    profile: savedProfile ?? {
+      xp: 0,
+      level: 1,
+      bestWpm: 0,
+    },
+    phase: {
+      status: "INITIAL",
+    },
+  };
+}
 
 type ComputeAccuracyInput = {
   correctChars: number; // right keystrokes, tallied per character as you type
